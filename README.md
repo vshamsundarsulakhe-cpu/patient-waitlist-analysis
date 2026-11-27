@@ -77,4 +77,4 @@ Python (pandas, matplotlib), SQL (SQLite-compatible), HTML/CSS/JavaScript (SVG c
 
 ## Credits
 
-Dataset from the [Pivotal Stats end-to-end Power BI dashboard project](https://pivotalstats.com/end-end-power-bi-dashboard-development/). Built with AI assistance (Claude); the analysis, SQL and dashboard were reviewed and are understood by me.
+Dataset from the Pivotal Stats end-to-end Power BI dashboard project. I worked through this project end to end, from data cleaning and SQL to the dashboard and recommendations. I reviewed the numbers and can explain each step.
