@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patient Waitlist Dashboard</title>
+<style>
+  :root { color-scheme: light; --bg:#f4f6f9; --surface:#ffffff; --ink:#191919; --ink2:#666666; --grid:#e6e8ec; --line:#d5d8de;
+          --s1:#257de0; --s2:#f47230; --s3:#00b894; --seq-lo:#84b9f3; --seq-hi:#1757ac; --bad:#c2371a; --good:#0a7d1f; }
+  @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --bg:#101010; --surface:#191919; --ink:#efefef; --ink2:#9c9c9c;
+          --grid:#2b2b2b; --line:#3a3a3a; --s1:#338ced; --s2:#e76624; --s3:#00a888; --seq-lo:#6aabf1; --seq-hi:#1b64be; --bad:#ff8a70; --good:#4fd16a; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  header { padding:22px 28px 6px; }
+  h1 { margin:0; font-size:24px; font-weight:700; }
+  .sub { color:var(--ink2); margin-top:2px; }
+  .filters { display:flex; flex-wrap:wrap; gap:14px 18px; align-items:flex-end; padding:14px 28px 6px; }
+  .filters label { display:flex; flex-direction:column; font-size:12px; color:var(--ink2); gap:4px; }
+  select, button { font:inherit; color:var(--ink); background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:7px 10px; min-width:130px; }
+  button { cursor:pointer; min-width:0; }
+  button:hover, select:hover { border-color:var(--s1); }
+  .wrap { padding:8px 28px 40px; display:grid; gap:16px; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:16px; }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px 18px; }
+  .kpi .lbl { color:var(--ink2); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  .kpi .val { font-size:34px; font-weight:700; line-height:1.15; margin-top:4px; }
+  .kpi .note { color:var(--ink2); font-size:12.5px; margin-top:2px; }
+  .up { color:var(--bad); font-weight:600; } .down { color:var(--good); font-weight:600; }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:16px; }
+  .card h2 { margin:0 0 2px; font-size:16px; }
+  .card .hint { color:var(--ink2); font-size:12.5px; margin-bottom:8px; }
+  .legend { display:flex; flex-wrap:wrap; gap:6px 16px; margin:4px 0 6px; font-size:12.5px; }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .sw { width:11px; height:11px; border-radius:3px; display:inline-block; }
+  svg { width:100%; height:auto; display:block; overflow:visible; }
+  svg text { fill:var(--ink2); font-size:11px; font-family:inherit; }
+  svg .val { fill:var(--ink); font-size:11.5px; font-weight:600; }
+  svg .nm { fill:var(--ink); font-size:11.5px; }
+  .tip { position:fixed; pointer-events:none; background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:8px;
+         padding:8px 10px; font-size:12.5px; box-shadow:0 4px 18px rgba(0,0,0,.18); display:none; z-index:5; min-width:140px; }
+  .tip b { display:block; margin-bottom:3px; }
+  .tip div { display:flex; justify-content:space-between; gap:14px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { text-align:right; padding:5px 8px; border-bottom:1px solid var(--grid); }
+  th:first-child, td:first-child { text-align:left; }
+  th { color:var(--ink2); font-weight:600; }
+  .tables { display:none; } .tables.on { display:grid; }
+  footer { color:var(--ink2); font-size:12px; padding:0 28px 28px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Patient Waitlist Dashboard</h1>
+  <div class="sub">Inpatient, day case and outpatient waitlists &middot; month-end snapshots, Jan 2018 &ndash; Mar 2021</div>
+</header>
+
+<div class="filters">
+  <label>Case type <select id="fCase"></select></label>
+  <label>Specialty group <select id="fGroup"></select></label>
+  <label>From <select id="fFrom"></select></label>
+  <label>To (snapshot month) <select id="fTo"></select></label>
+  <button id="reset">Reset filters</button>
+  <button id="toggleTables">View as table</button>
+</div>
+
+<div class="wrap">
+  <div class="kpis" id="kpis"></div>
+
+  <div class="card">
+    <h2>Monthly waitlist trend</h2>
+    <div class="hint">Patients waiting at each month-end. Outpatient is shown separately because its volume is about 10x larger.</div>
+    <div class="grid2">
+      <div><div class="legend" id="legTrend1"></div><div id="trend1"></div></div>
+      <div><div class="legend" id="legTrend2"></div><div id="trend2"></div></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>How long are patients waiting?</h2>
+      <div class="hint" id="bandHint"></div>
+      <div class="legend" id="legAge"></div>
+      <div id="bands"></div>
+    </div>
+    <div class="card">
+      <h2>Case type split</h2>
+      <div class="hint" id="caseHint"></div>
+      <div id="caseSplit"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Top 10 specialties by patients waiting</h2>
+    <div class="hint" id="specHint"></div>
+    <div class="legend" id="legSpec"></div>
+    <div id="specs"></div>
+  </div>
+
+  <div class="grid2 tables" id="tables">
+    <div class="card"><h2>Time band &times; age (data table)</h2><div id="tblBands"></div></div>
+    <div class="card"><h2>Top 10 specialties (data table)</h2><div id="tblSpecs"></div></div>
+  </div>
+</div>
+<footer>Source: Pivotal Stats patient waitlist dataset (inpatient, day case and outpatient files), Jan 2018 &ndash; Mar 2021. Built with Python, SQL and vanilla JS.</footer>
+<div class="tip" id="tip"></div>
+
+<script>
+const D = /*__DATA__*/null;
+const NS = "http://www.w3.org/2000/svg";
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const caseColor = ["--s1","--s2","--s3"];              // Outpatient, Day Case, Inpatient
+const ageColor  = ["--s1","--s2","--s3"];              // 0-15, 16-64, 65+
+const fmt = n => n>=1e6 ? (n/1e6).toFixed(2)+"M" : n>=1e4 ? Math.round(n/1e3)+"K" : n>=1e3 ? (n/1e3).toFixed(1)+"K" : String(Math.round(n));
+const full = n => Math.round(n).toLocaleString("en-US");
+const mLabel = m => { const [y,mm]=m.split("-"); return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+mm-1]+" "+y; };
+
+const st = { c:-1, g:-1, from:0, to:D.months.length-1 };
+const $ = id => document.getElementById(id);
+const tip = $("tip");
+
+function opt(sel, items, vals){ sel.innerHTML = items.map((t,i)=>`<option value="${vals?vals[i]:i}">${t}</option>`).join(""); }
+opt($("fCase"), ["All case types",...D.cases], [-1,...D.cases.map((_,i)=>i)]);
+opt($("fGroup"), ["All specialty groups",...D.groups], [-1,...D.groups.map((_,i)=>i)]);
+opt($("fFrom"), D.months.map(mLabel)); opt($("fTo"), D.months.map(mLabel));
+$("fTo").value = st.to;
+
+function readState(){
+  st.c=+$("fCase").value; st.g=+$("fGroup").value; st.from=+$("fFrom").value; st.to=+$("fTo").value;
+  if(st.from>st.to){ st.from=st.to; $("fFrom").value=st.from; }
+  draw();
+}
+["fCase","fGroup","fFrom","fTo"].forEach(i=>$(i).addEventListener("change",readState));
+$("reset").onclick=()=>{ $("fCase").value=-1; $("fGroup").value=-1; $("fFrom").value=0; $("fTo").value=D.months.length-1; readState(); };
+$("toggleTables").onclick=()=>{ const t=$("tables"); t.classList.toggle("on"); $("toggleTables").textContent=t.classList.contains("on")?"Hide table":"View as table"; };
+
+// ---------- data helpers ----------
+const okA = (r,c) => (c<0||r[1]===c) && (st.g<0||r[2]===st.g);
+function totalsByMonth(caseIdx){        // array over all months
+  const out = new Array(D.months.length).fill(0);
+  for(const r of D.A){ if(r[1]===caseIdx && (st.g<0||r[2]===st.g)) out[r[0]]+=r[5]; }
+  return out;
+}
+function snapshot(m){                   // total for month m under current filters
+  let t=0, long=0, l18=0;
+  for(const r of D.A){ if(r[0]===m && okA(r,st.c)){ t+=r[5]; if(r[4]>=4) long+=r[5]; if(r[4]===6) l18+=r[5]; } }
+  return {t,long,l18};
+}
+
+// ---------- svg helpers ----------
+function el(name, attrs={}, text){ const e=document.createElementNS(NS,name); for(const k in attrs) e.setAttribute(k,attrs[k]); if(text!=null) e.textContent=text; return e; }
+function niceTicks(lo,hi,n=4){ const span=hi-lo||1, step0=span/n, p=Math.pow(10,Math.floor(Math.log10(step0))), f=step0/p;
+  const step=(f<1.5?1:f<3?2:f<7?5:10)*p; const a=Math.floor(lo/step)*step, b=Math.ceil(hi/step)*step; const t=[]; for(let v=a;v<=b+1e-9;v+=step) t.push(v); return t; }
+function legend(id, items){ $(id).innerHTML = items.map(i=>`<span><i class="sw" style="background:${i.color}"></i>${i.name}</span>`).join(""); }
+function showTip(ev, html){ tip.innerHTML=html; tip.style.display="block"; const w=tip.offsetWidth, x=ev.clientX+14; tip.style.left=(x+w>innerWidth?ev.clientX-w-14:x)+"px"; tip.style.top=(ev.clientY+14)+"px"; }
+const hideTip = () => tip.style.display="none";
+
+// ---------- line chart with crosshair tooltip ----------
+function lineChart(host, series, zeroBase){
+  const W=520,H=230,m={l:46,r:16,t:10,b:26};
+  const idx=[]; for(let i=st.from;i<=st.to;i++) idx.push(i);
+  const all=series.flatMap(s=>idx.map(i=>s.vals[i]));
+  let lo=zeroBase?0:Math.min(...all), hi=Math.max(...all);
+  if(!isFinite(hi)||hi===0){ host.innerHTML='<div class="hint">No data for this selection.</div>'; return; }
+  const pad=(hi-lo)*0.12||hi*0.1; if(!zeroBase) lo=Math.max(0,lo-pad); hi+=pad;
+  const ticks=niceTicks(lo,hi,4); lo=ticks[0]; hi=ticks[ticks.length-1];
+  const x=k=>m.l+(idx.length>1?k/(idx.length-1):0.5)*(W-m.l-m.r), y=v=>H-m.b-(v-lo)/(hi-lo)*(H-m.t-m.b);
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img","aria-label":"Line chart of monthly waitlist"});
+  ticks.forEach(t=>{ svg.append(el("line",{x1:m.l,x2:W-m.r,y1:y(t),y2:y(t),stroke:css("--grid"),"stroke-width":1}));
+                     svg.append(el("text",{x:m.l-6,y:y(t)+4,"text-anchor":"end"},fmt(t))); });
+  const step=Math.max(1,Math.ceil(idx.length/6));
+  idx.forEach((mi,k)=>{ if(k%step===0 || k===idx.length-1){ const [yy,mm]=D.months[mi].split("-"); if(k%step!==0 && idx.length-1-k<step/2) return;
+      svg.append(el("text",{x:x(k),y:H-6,"text-anchor":"middle"},mLabel(D.months[mi]).replace(" 20"," '"))); } });
+  series.forEach(s=>{
+    const d=idx.map((mi,k)=>(k?"L":"M")+x(k).toFixed(1)+" "+y(s.vals[mi]).toFixed(1)).join("");
+    svg.append(el("path",{d,fill:"none",stroke:css(s.color),"stroke-width":2,"stroke-linejoin":"round","stroke-linecap":"round"}));
+    const last=idx.length-1; svg.append(el("circle",{cx:x(last),cy:y(s.vals[idx[last]]),r:4,fill:css(s.color),stroke:css("--surface"),"stroke-width":2}));
+  });
+  const cross=el("line",{y1:m.t,y2:H-m.b,stroke:css("--ink2"),"stroke-width":1,"stroke-dasharray":"3 3",visibility:"hidden"}); svg.append(cross);
+  const dots=series.map(s=>{ const c=el("circle",{r:4.5,fill:css(s.color),stroke:css("--surface"),"stroke-width":2,visibility:"hidden"}); svg.append(c); return c; });
+  const hit=el("rect",{x:m.l,y:m.t,width:W-m.l-m.r,height:H-m.t-m.b,fill:"transparent"}); svg.append(hit);
+  hit.addEventListener("mousemove",ev=>{
+    const r=svg.getBoundingClientRect(), px=(ev.clientX-r.left)/r.width*W;
+    let k=Math.round((px-m.l)/(W-m.l-m.r)*(idx.length-1)); k=Math.max(0,Math.min(idx.length-1,k));
+    cross.setAttribute("x1",x(k)); cross.setAttribute("x2",x(k)); cross.setAttribute("visibility","visible");
+    series.forEach((s,j)=>{ dots[j].setAttribute("cx",x(k)); dots[j].setAttribute("cy",y(s.vals[idx[k]])); dots[j].setAttribute("visibility","visible"); });
+    showTip(ev,`<b>${mLabel(D.months[idx[k]])}</b>`+series.map(s=>`<div><span><i class="sw" style="background:${css(s.color)}"></i> ${s.name}</span><span>${full(s.vals[idx[k]])}</span></div>`).join(""));
+  });
+  hit.addEventListener("mouseleave",()=>{ cross.setAttribute("visibility","hidden"); dots.forEach(d=>d.setAttribute("visibility","hidden")); hideTip(); });
+  host.innerHTML=""; host.append(svg);
+}
+
+// ---------- vertical stacked bars: time band x age ----------
+function bandChart(snapM){
+  const nb=D.bands.length, na=D.ages.length;
+  const vals=Array.from({length:nb},()=>new Array(na).fill(0));
+  for(const r of D.A) if(r[0]===snapM && okA(r,st.c)) vals[r[4]][r[3]]+=r[5];
+  const tot=vals.map(v=>v.reduce((a,b)=>a+b,0)), max=Math.max(...tot,1);
+  const W=520,H=270,m={l:46,r:10,t:16,b:44};
+  const ticks=niceTicks(0,max,4), top=ticks[ticks.length-1];
+  const bw=(W-m.l-m.r)/nb, bar=bw*0.58, y=v=>H-m.b-v/top*(H-m.t-m.b);
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img","aria-label":"Patients by time band and age"});
+  ticks.forEach(t=>{ svg.append(el("line",{x1:m.l,x2:W-m.r,y1:y(t),y2:y(t),stroke:css("--grid")})); svg.append(el("text",{x:m.l-6,y:y(t)+4,"text-anchor":"end"},fmt(t))); });
+  vals.forEach((v,b)=>{
+    const x0=m.l+b*bw+(bw-bar)/2; let acc=0;
+    v.forEach((val,a)=>{ if(!val) return; const y1=y(acc+val), y2=y(acc), h=Math.max(0,y2-y1-2);
+      const rect=el("rect",{x:x0,y:y1,width:bar,height:h,fill:css(ageColor[a]),rx:a===na-1?4:0}); svg.append(rect);
+      rect.addEventListener("mousemove",ev=>showTip(ev,`<b>${D.bands[b]} &middot; age ${D.ages[a]}</b><div><span>Patients</span><span>${full(val)}</span></div><div><span>Share of band</span><span>${(100*val/tot[b]).toFixed(0)}%</span></div>`));
+      rect.addEventListener("mouseleave",hideTip); acc+=val; });
+    svg.append(el("text",{x:x0+bar/2,y:y(tot[b])-5,"text-anchor":"middle",class:"val"},fmt(tot[b])));
+    svg.append(el("text",{x:x0+bar/2,y:H-m.b+15,"text-anchor":"middle"},D.bands[b].replace(" Months","")));
+  });
+  svg.append(el("text",{x:m.l+(W-m.l-m.r)/2,y:H-6,"text-anchor":"middle"},"Months waiting"));
+  $("bands").innerHTML=""; $("bands").append(svg);
+  $("tblBands").innerHTML=`<table><tr><th>Time band</th>${D.ages.map(a=>`<th>${a}</th>`).join("")}<th>Total</th></tr>`+
+    vals.map((v,b)=>`<tr><td>${D.bands[b]}</td>${v.map(x=>`<td>${full(x)}</td>`).join("")}<td>${full(tot[b])}</td></tr>`).join("")+`</table>`;
+}
+
+// ---------- case type split: horizontal bars with share ----------
+function caseChart(snapM){
+  const t=D.cases.map(()=>0);
+  for(const r of D.A) if(r[0]===snapM && (st.g<0||r[2]===st.g)) t[r[1]]+=r[5];
+  const sum=t.reduce((a,b)=>a+b,0)||1, W=520,H=150,m={l:90,r:80}, bh=26, gap=16;
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img","aria-label":"Patients by case type"});
+  t.forEach((v,i)=>{ const yy=8+i*(bh+gap), w=(W-m.l-m.r)*v/Math.max(...t,1);
+    svg.append(el("text",{x:m.l-10,y:yy+bh/2+4,"text-anchor":"end",class:"nm"},D.cases[i]));
+    const r=el("rect",{x:m.l,y:yy,width:Math.max(w,2),height:bh,fill:css(caseColor[i]),rx:4,opacity:(st.c<0||st.c===i)?1:.35}); svg.append(r);
+    svg.append(el("text",{x:m.l+Math.max(w,2)+8,y:yy+bh/2+4,class:"val"},`${fmt(v)}  (${(100*v/sum).toFixed(1)}%)`));
+    r.addEventListener("mousemove",ev=>showTip(ev,`<b>${D.cases[i]}</b><div><span>Patients</span><span>${full(v)}</span></div><div><span>Share</span><span>${(100*v/sum).toFixed(1)}%</span></div>`)); r.addEventListener("mouseleave",hideTip); });
+  $("caseSplit").innerHTML=""; $("caseSplit").append(svg);
+}
+
+// ---------- top 10 specialties: stacked (<12m / 12m+) ----------
+function specChart(snapM){
+  const rows={};
+  for(const r of D.B) if(r[0]===snapM && (st.c<0||r[1]===st.c) && (st.g<0||D.specGroup[r[2]]===st.g)){
+    const o=rows[r[2]]||(rows[r[2]]={t:0,l:0}); o.t+=r[3]; o.l+=r[4]; }
+  const list=Object.entries(rows).map(([s,o])=>({name:D.specs[s],t:o.t,l:o.l})).sort((a,b)=>b.t-a.t).slice(0,10);
+  if(!list.length){ $("specs").innerHTML='<div class="hint">No data for this selection.</div>'; $("tblSpecs").innerHTML=""; return; }
+  const W=900,bh=22,gap=8,m={l:190,r:150,t:4}, H=m.t+list.length*(bh+gap)+4, max=list[0].t;
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img","aria-label":"Top specialties by patients waiting"});
+  list.forEach((s,i)=>{ const yy=m.t+i*(bh+gap), sc=v=>(W-m.l-m.r)*v/max, wS=sc(s.t-s.l), wL=sc(s.l);
+    svg.append(el("text",{x:m.l-10,y:yy+bh/2+4,"text-anchor":"end",class:"nm"},s.name));
+    const a=el("rect",{x:m.l,y:yy,width:Math.max(wS-2,0),height:bh,fill:css("--seq-lo"),rx:4}); svg.append(a);
+    const b=el("rect",{x:m.l+wS,y:yy,width:Math.max(wL,0),height:bh,fill:css("--seq-hi"),rx:4}); svg.append(b);
+    svg.append(el("text",{x:m.l+sc(s.t)+8,y:yy+bh/2+4,class:"val"},`${fmt(s.t)}  (${s.t?Math.round(100*s.l/s.t):0}% 12m+)`));
+    [a,b].forEach(r=>{ r.addEventListener("mousemove",ev=>showTip(ev,`<b>${s.name}</b><div><span>Waiting</span><span>${full(s.t)}</span></div><div><span>Waiting 12m+</span><span>${full(s.l)}</span></div><div><span>Share 12m+</span><span>${s.t?(100*s.l/s.t).toFixed(1):0}%</span></div>`)); r.addEventListener("mouseleave",hideTip); }); });
+  $("specs").innerHTML=""; $("specs").append(svg);
+  $("tblSpecs").innerHTML=`<table><tr><th>Specialty</th><th>Waiting</th><th>12m+</th><th>% 12m+</th></tr>`+
+    list.map(s=>`<tr><td>${s.name}</td><td>${full(s.t)}</td><td>${full(s.l)}</td><td>${s.t?(100*s.l/s.t).toFixed(1):0}%</td></tr>`).join("")+`</table>`;
+}
+
+// ---------- KPIs ----------
+function kpis(){
+  const cur=snapshot(st.to), py=st.to>=12?snapshot(st.to-12):null;
+  const yoy=py&&py.t?(cur.t-py.t)/py.t*100:null;
+  const share=cur.t?100*cur.long/cur.t:0, pyShare=py&&py.t?100*py.long/py.t:null;
+  const card=(l,v,n)=>`<div class="card kpi"><div class="lbl">${l}</div><div class="val">${v}</div><div class="note">${n}</div></div>`;
+  const arrow=(p,inv)=>p==null?"No prior-year data in range":`<span class="${p>0?"up":"down"}">${p>0?"&#9650;":"&#9660;"} ${Math.abs(p).toFixed(1)}%</span> vs ${mLabel(D.months[st.to-12])}`;
+  $("kpis").innerHTML=
+    card("Patients waiting · "+mLabel(D.months[st.to]), full(cur.t), py?`${full(py.t)} a year earlier`:"&nbsp;")+
+    card("Year-on-year change", yoy==null?"n/a":(yoy>0?"+":"")+yoy.toFixed(1)+"%", arrow(yoy))+
+    card("Waiting 12+ months", full(cur.long), `${share.toFixed(1)}% of the waitlist`+(pyShare==null?"":` &middot; ${pyShare.toFixed(1)}% a year earlier`))+
+    card("Waiting 18+ months", full(cur.l18), `${cur.t?(100*cur.l18/cur.t).toFixed(1):0}% of the waitlist`);
+}
+
+function draw(){
+  kpis();
+  const names=[0,1,2].map(i=>D.cases[i]);
+  const tot=i=>totalsByMonth(i);
+  const out=[{name:"Outpatient",vals:tot(0),color:caseColor[0]}].filter(()=>st.c<0||st.c===0);
+  const inn=[1,2].filter(i=>st.c<0||st.c===i).map(i=>({name:D.cases[i],vals:tot(i),color:caseColor[i]}));
+  $("trend1").innerHTML=""; $("trend2").innerHTML="";
+  out.length?(legend("legTrend1",out.map(s=>({name:s.name,color:css(s.color)}))),lineChart($("trend1"),out,false)):($("legTrend1").innerHTML="",$("trend1").innerHTML='<div class="hint">Outpatient hidden by the case type filter.</div>');
+  inn.length?(legend("legTrend2",inn.map(s=>({name:s.name,color:css(s.color)}))),lineChart($("trend2"),inn,false)):($("legTrend2").innerHTML="",$("trend2").innerHTML='<div class="hint">Day case / inpatient hidden by the case type filter.</div>');
+  const lab=mLabel(D.months[st.to]);
+  $("bandHint").textContent=`Patients waiting at ${lab}, by time band and age group. The last bar (18+ months) is the longest wait.`;
+  $("caseHint").textContent=`Share of the waitlist at ${lab}.`;
+  $("specHint").textContent=`At ${lab}. Dark part = patients waiting 12 months or more.`;
+  legend("legAge",D.ages.map((a,i)=>({name:"Age "+a,color:css(ageColor[i])})));
+  legend("legSpec",[{name:"Waiting under 12 months",color:css("--seq-lo")},{name:"Waiting 12+ months",color:css("--seq-hi")}]);
+  bandChart(st.to); caseChart(st.to); specChart(st.to);
+}
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change",draw);
+draw();
+</script>
+</body>
+</html>
